@@ -48,3 +48,9 @@ The question, the three answers and the microphone are now a single translucent 
 Type hierarchy follows the language task rather than the input mechanism: the question is the largest element, the numerals next, and the microphone copy and listening state smallest. The microphone was previously the most prominent element on the screen; it is a way to answer, not the thing being asked.
 
 Two supporting choices fall out of this. The separate "Say one of these" / "Tap a number" label between the question and the numbers was removed — it wedged a third text line into the unit the redesign exists to tighten, and the microphone panel already states the mode in every state. And the panel is bottom-anchored with `.feedback-line:empty { display: none; }`, so revealing "Three? Let's see!" or dropping into the tap rescue grows the panel upward and moves the numbers and microphone by zero pixels, instead of shifting them under the child's gaze at the moment they are choosing.
+
+## 2026-09-03 — Instructions in Japanese, target vocabulary in English
+
+The microphone panel's two lines are Japanese in every state — こたえをいってね！/ きいているよ…, the tap-only and speech-unavailable states, and the post-guess replies. The question "HOW MANY GHOSTS?", the three numerals and the "Three? Let's see!" feedback stay English: those are the vocabulary the game exists to teach, and translating them would remove the lesson. Speech recognition remains `en-US` — the child still answers in English.
+
+Hiragana-forward wording for elementary readers. The status line lost its uppercase transform and wide letter-spacing, which do nothing for kana and hurt legibility, and grew from .66rem to .78rem. Japanese renders through a system font stack (`--font-ja`, rounded gothic first); a webfont was rejected because it would mean a network request, which the game's privacy guarantee forbids.

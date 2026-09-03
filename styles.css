@@ -16,6 +16,10 @@
   --safe-top: max(14px, env(safe-area-inset-top));
   --safe-bottom: max(18px, env(safe-area-inset-bottom));
   --font: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  /* System Japanese faces only - a webfont would mean a network request. Rounded
+     gothic first where it exists, since the audience is elementary readers. */
+  --font-ja: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic UI", "Yu Gothic",
+    "Noto Sans JP", "Noto Sans CJK JP", Meiryo, var(--font);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
@@ -142,8 +146,9 @@ button { color: inherit; cursor: pointer; touch-action: manipulation; }
 .mic-icon { font-size: 1.35rem; line-height: 1; }
 .mic-live { position: absolute; right: 0; bottom: 1px; width: 13px; height: 13px; border: 3px solid #fff; border-radius: 50%; background: var(--mint-2); box-shadow: 0 0 0 0 rgba(131,243,223,.65); }
 .say-prompt.is-listening .mic-live { animation: micLive 1.15s infinite; }
-.say-copy { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.12; }
-.say-copy small { margin-top: 3px; color: #ffeaf6; font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; }
+.say-copy { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.say-copy[lang="ja"] { font-family: var(--font-ja); }
+.say-copy small { margin-top: 3px; color: #ffeaf6; font-size: .78rem; letter-spacing: .01em; }
 @keyframes micLive { 65% { box-shadow: 0 0 0 10px rgba(255,107,145,0); } }
 .choices { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(8px, 2vw, 16px); }
 .number-btn { min-height: clamp(54px, 8.6vh, 82px); border-radius: 19px; font-size: clamp(1.7rem, 7vw, 3rem); line-height: 1; opacity: .94; }

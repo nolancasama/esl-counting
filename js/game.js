@@ -167,6 +167,22 @@ const Game = (() => {
     return shuffle(pool[Math.floor(Math.random() * pool.length)].vals);
   }
 
+  /* The microphone panel instructs the learner, so it speaks their language.
+     Hiragana-forward for elementary readers. The English numbers they are
+     learning to say are deliberately untranslated. */
+  const MIC = {
+    say: 'こたえをいってね！',
+    listening: 'きいているよ…',
+    tapPrompt: 'こたえをタップしてね！',
+    tapMode: 'タップモード',
+    unavailable: 'こえがつかえないよ',
+    tapNumber: 'すうじをタップしてね',
+    heardYou: 'じょうずにいえたね！',
+    goodGuess: 'いいね！',
+    heardStatus: 'きこえたよ！',
+    gotStatus: 'うけとったよ！',
+  };
+
   function photoStageMarkup(extraClass) {
     return `<div class="photo-stage ${extraClass || ''}" id="photo-stage"><canvas class="frozen-photo" id="frozen-photo"></canvas><div class="reveal-mist"></div><div class="ghost-layer" id="ghost-layer"></div></div>`;
   }
@@ -213,8 +229,8 @@ const Game = (() => {
     const choices = choicesFor(max);
     const tapOnly = state().settings.speechMode === 'tap';
     const speechReady = !tapOnly && Speech.supported();
-    const initialLine = speechReady ? 'Say your guess!' : (tapOnly ? 'Tap your guess!' : 'Speech unavailable');
-    const initialStatus = speechReady ? 'Listening…' : (tapOnly ? 'Tap only mode' : 'Tap a number');
+    const initialLine = speechReady ? MIC.say : (tapOnly ? MIC.tapPrompt : MIC.unavailable);
+    const initialStatus = speechReady ? MIC.listening : (tapOnly ? MIC.tapMode : MIC.tapNumber);
     round = { choices, guess: null, total: null, counted: 0, positions: [], surprise: null, correct: false, stage: state().progress.stage || 1 };
     app.innerHTML = `
       <section class="screen">
@@ -226,7 +242,7 @@ const Game = (() => {
             <div class="choice-slot" id="choice-rescue">${choiceMarkup(choices, !speechReady)}</div>
             <div class="say-prompt ${speechReady ? 'is-listening' : ''}" id="speech-prompt">
               <span class="mic-orb" aria-hidden="true"><span class="mic-icon">🎤</span><span class="mic-live" id="mic-dot"></span></span>
-              <span class="say-copy"><b id="say-line">${initialLine}</b><small id="listening-state">${initialStatus}</small></span>
+              <span class="say-copy" lang="ja"><b id="say-line">${initialLine}</b><small id="listening-state">${initialStatus}</small></span>
             </div>
           </div>
         </div>
@@ -267,8 +283,8 @@ const Game = (() => {
     const line = document.getElementById('say-line');
     const status = document.getElementById('listening-state');
     if (prompt) prompt.classList.remove('is-listening');
-    if (line) line.textContent = 'Speech unavailable';
-    if (status) status.textContent = 'Tap a number';
+    if (line) line.textContent = MIC.unavailable;
+    if (status) status.textContent = MIC.tapNumber;
     if (rescue && !rescue.querySelector('.choices:not(.display-only)')) {
       rescue.innerHTML = choiceMarkup(round.choices, true);
       bindChoiceButtons();
@@ -291,11 +307,11 @@ const Game = (() => {
     document.querySelectorAll('[data-choice]').forEach(el => { el.disabled = true; });
     if (btn) { btn.classList.add('chosen'); sparkleAround(btn); }
     document.getElementById('feedback').textContent = `${titleCase(word(n))}? Let's see!`;
-    document.getElementById('say-line').textContent = source === 'speech' ? 'Great speaking!' : 'Great guess!';
+    document.getElementById('say-line').textContent = source === 'speech' ? MIC.heardYou : MIC.goodGuess;
     const speechPrompt = document.getElementById('speech-prompt');
     const listeningState = document.getElementById('listening-state');
     if (speechPrompt) speechPrompt.classList.remove('is-listening');
-    if (listeningState) listeningState.textContent = source === 'speech' ? 'I heard you!' : 'Guess received!';
+    if (listeningState) listeningState.textContent = source === 'speech' ? MIC.heardStatus : MIC.gotStatus;
     Sfx.sparkle(); announce(`${titleCase(word(n))}? Let's see!`);
     later(startReveal, 850);
   }

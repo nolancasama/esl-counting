@@ -198,7 +198,10 @@ function assertPlacementSpread(positions, label) {
       await page.evaluate(() => GhostCountTest.forceLucky(1));
       assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'a speech-ready guess still shows the three number options');
       assert.strictEqual(await page.locator('.choices.display-only [data-choice]:disabled').count(), 3, 'those options are inert while speech owns the round');
-      assert(/say your guess/i.test(await page.locator('#say-line').innerText()), 'the microphone panel carries the speak instruction');
+      assert(/こたえをいってね/.test(await page.locator('#say-line').innerText()), 'the microphone panel carries the speak instruction in Japanese');
+      assert(/きいているよ/.test(await page.locator('#listening-state').innerText()), 'the listening state is in Japanese');
+      assert.strictEqual(await page.locator('.say-copy[lang="ja"]').count(), 1, 'the Japanese copy is marked as Japanese');
+      assert(/HOW MANY GHOSTS/i.test(await page.locator('.question').innerText()), 'the English question being taught is untranslated');
       if (round === 0) {
         /* A thinking child produces silence, and recognition ends itself on silence.
            Neither a transient error nor one quiet restart may demote speech. */
@@ -209,7 +212,7 @@ function assertPlacementSpread(positions, label) {
         });
         await page.waitForTimeout(400);
         assert.strictEqual(await page.locator('.choices.display-only [data-choice]:disabled').count(), 3, 'a transient no-speech error leaves the number options inert');
-        assert(/say your guess/i.test(await page.locator('#say-line').innerText()), 'the microphone prompt survives a silent restart');
+        assert(/こたえをいってね/.test(await page.locator('#say-line').innerText()), 'the microphone prompt survives a silent restart');
         assert.strictEqual(await page.locator('.say-prompt.is-listening').count(), 1, 'the prompt still reads as listening after a restart');
 
         await page.evaluate(() => {
@@ -219,8 +222,8 @@ function assertPlacementSpread(positions, label) {
         });
         await page.waitForSelector('.choices:not(.display-only) [data-choice]');
         assert.strictEqual(await page.locator('[data-choice]:not(:disabled)').count(), 3, 'recognition failure makes the three number options clickable');
-        assert(/speech unavailable/i.test(await page.locator('#say-line').innerText()), 'rescue explains that speech is unavailable');
-        assert(/tap a number/i.test(await page.locator('#listening-state').innerText()), 'rescue prompts the learner to tap a number');
+        assert(/こえがつかえないよ/.test(await page.locator('#say-line').innerText()), 'rescue explains in Japanese that speech is unavailable');
+        assert(/すうじをタップしてね/.test(await page.locator('#listening-state').innerText()), 'rescue prompts the learner in Japanese to tap a number');
         const preserved = await page.evaluate(() => {
           const snapshot = window.__guessSnapshot;
           const canvas = document.getElementById('frozen-photo');
