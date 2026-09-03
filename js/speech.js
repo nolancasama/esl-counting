@@ -1,6 +1,6 @@
 /* ============================================================
    GHOST COUNT — friendly English speech input and output
-   Recognition is progressive enhancement: it never gates tapping.
+   Recognition is the primary guess input; tapping is its rescue path.
    ============================================================ */
 'use strict';
 
@@ -30,6 +30,12 @@ const Speech = (() => {
   let stopping = false;
   let callbacks = {};
   let restartTimer = 0;
+  /* Recognition ends itself after a stretch of silence. Restarting is normal and
+     must not be mistaken for failure, but a recognizer that never hears anything
+     at all is not working - surface the tap rescue rather than listening forever. */
+  const TERMINAL_ERRORS = ['not-allowed', 'service-not-allowed', 'audio-capture'];
+  const EMPTY_SESSION_LIMIT = 3;
+  let emptySessions = 0;
   let ttsEnabled = true;
 
   function normalize(text) {
@@ -80,12 +86,14 @@ const Speech = (() => {
       recognizer.continuous = true;
       recognizer.interimResults = true;
       recognizer.maxAlternatives = 5;
+      let sawTranscript = false;
       recognizer.onresult = event => {
         let fallbackTranscript = '';
         for (let resultIndex = event.resultIndex; resultIndex < event.results.length; resultIndex += 1) {
           const result = event.results[resultIndex];
           for (let altIndex = 0; altIndex < result.length; altIndex += 1) {
             const transcript = result[altIndex].transcript || '';
+            if (transcript.trim()) sawTranscript = true;
             if (!fallbackTranscript) fallbackTranscript = transcript;
             const match = matchAnswer(transcript, callbacks.tier);
             if (match) {
@@ -98,14 +106,22 @@ const Speech = (() => {
         if (fallbackTranscript && callbacks.onTranscript) callbacks.onTranscript(fallbackTranscript, false);
       };
       recognizer.onerror = event => {
-        const terminal = ['not-allowed', 'service-not-allowed', 'audio-capture'].includes(event.error);
-        if (terminal) listening = false;
-        if (callbacks.onUnavailable && terminal) callbacks.onUnavailable();
+        /* Only a permission or hardware failure means speech cannot work. Transient
+           errors such as no-speech or network fall through to onend and restart. */
+        if (!TERMINAL_ERRORS.includes(event && event.error)) return;
+        listening = false;
+        if (callbacks.onUnavailable) callbacks.onUnavailable();
       };
       recognizer.onend = () => {
         if (recognition !== recognizer) return;
         recognition = null;
         if (listening && !stopping) {
+          emptySessions = sawTranscript ? 0 : emptySessions + 1;
+          if (emptySessions >= EMPTY_SESSION_LIMIT) {
+            listening = false;
+            if (callbacks.onUnavailable) callbacks.onUnavailable();
+            return;
+          }
           clearTimeout(restartTimer);
           restartTimer = setTimeout(beginRecognizer, 250);
         } else if (callbacks.onEnd) {
@@ -128,6 +144,7 @@ const Speech = (() => {
       return false;
     }
     configure(options);
+    emptySessions = 0;
     listening = true;
     stopping = false;
     beginRecognizer();

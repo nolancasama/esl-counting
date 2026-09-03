@@ -92,9 +92,9 @@ button { color: inherit; cursor: pointer; touch-action: manipulation; }
 }
 .photo-stage video.mirror { transform: scaleX(-1); }
 .photo-stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 100px rgba(6, 3, 22, .22); }
-.photo-stage .frozen-photo, .photo-stage .person-cutout { transition: filter 1s ease; }
-.photo-stage.haunted .frozen-photo, .photo-stage.haunted .person-cutout { filter: brightness(.54) saturate(.72) hue-rotate(15deg); }
-.photo-stage.count-ready .frozen-photo, .photo-stage.count-ready .person-cutout { filter: brightness(.78) saturate(.9) hue-rotate(7deg); }
+.photo-stage .frozen-photo { transition: filter 1s ease; }
+.photo-stage.haunted .frozen-photo { filter: brightness(.54) saturate(.72) hue-rotate(15deg); }
+.photo-stage.count-ready .frozen-photo { filter: brightness(.78) saturate(.9) hue-rotate(7deg); }
 .camera-hud { display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: var(--safe-top) 18px var(--safe-bottom); }
 .camera-top { width: 100%; display: flex; justify-content: center; }
 .mode-chip, .prompt-chip {
@@ -149,8 +149,6 @@ button { color: inherit; cursor: pointer; touch-action: manipulation; }
 
 /* Ghost interaction */
 .ghost-layer { position: absolute; z-index: 12; pointer-events: none; }
-.person-cutout { z-index: 16; pointer-events: none; opacity: 0; }
-.person-cutout.has-person { opacity: 1; }
 .ghost-target {
   position: absolute; width: clamp(76px, 18vw, 142px); aspect-ratio: 1; border: 0; padding: 0; background: transparent;
   transform: translate(-50%, -50%) rotate(var(--rot)) scale(var(--scale));
@@ -161,7 +159,6 @@ button { color: inherit; cursor: pointer; touch-action: manipulation; }
 .ghost-target.fake.vanish { animation: vanish .55s ease-in forwards; }
 .ghost-target.peeker { clip-path: polygon(0 0, 70% 0, 70% 100%, 0 100%); }
 .ghost-target svg { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.ghost-target.behind-person svg { filter: brightness(.89) saturate(.82) contrast(.93) hue-rotate(7deg); }
 .ghost-target.counted { filter: grayscale(.72) saturate(.5) brightness(.72) drop-shadow(0 0 2px #fff) drop-shadow(0 0 13px #ffd465); }
 .ghost-target.counted svg { opacity: .9; }
 .ghost-target.pop { animation: ghostTap .4s cubic-bezier(.2,1.8,.4,1), ghostDrift var(--float-dur) ease-in-out infinite .4s; }

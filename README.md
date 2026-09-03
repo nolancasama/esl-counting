@@ -15,7 +15,7 @@ The game makes no network requests. Camera frames stay in memory only, are proce
 - **Gear:** Number range, speech input, spoken prompts, volume, and progress reset.
 - **Evolution:** Tap anywhere to skip the short sequence.
 
-Speech recognition is progressive enhancement. Number buttons are always available.
+Speech is the primary guessing input when recognition is available and enabled. Number buttons appear as a fallback when speech is unsupported or unavailable, or when a teacher selects **Tap only** in Settings.
 
 ## Files
 

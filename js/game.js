@@ -66,7 +66,6 @@ const Game = (() => {
   }
   function discardPhoto() {
     photoCanvas = null;
-    if (round) round.personCutout = null;
   }
 
   function showTitle() {
@@ -169,33 +168,13 @@ const Game = (() => {
   }
 
   function photoStageMarkup(extraClass) {
-    return `<div class="photo-stage ${extraClass || ''}" id="photo-stage"><canvas class="frozen-photo" id="frozen-photo"></canvas><div class="reveal-mist"></div><div class="ghost-layer" id="ghost-layer"></div><canvas class="person-cutout" id="person-cutout" aria-hidden="true"></canvas></div>`;
+    return `<div class="photo-stage ${extraClass || ''}" id="photo-stage"><canvas class="frozen-photo" id="frozen-photo"></canvas><div class="reveal-mist"></div><div class="ghost-layer" id="ghost-layer"></div></div>`;
   }
   function paintFrozen() {
     const dest = document.getElementById('frozen-photo');
     if (!dest || !photoCanvas) return;
     dest.width = photoCanvas.width; dest.height = photoCanvas.height;
     dest.getContext('2d').drawImage(photoCanvas, 0, 0);
-  }
-
-  function paintPersonCutout() {
-    const dest = document.getElementById('person-cutout');
-    const cutout = round && round.personCutout;
-    if (!dest || !cutout || !photoCanvas) return;
-    dest.width = photoCanvas.width; dest.height = photoCanvas.height;
-    const ctx = dest.getContext('2d');
-    ctx.clearRect(0, 0, dest.width, dest.height);
-    try {
-      const image = cutout.canvas || cutout.imageData || cutout;
-      if (typeof ImageData !== 'undefined' && image instanceof ImageData) {
-        const source = document.createElement('canvas'); source.width = image.width; source.height = image.height;
-        source.getContext('2d').putImageData(image, 0, 0);
-        ctx.drawImage(source, 0, 0, dest.width, dest.height);
-      } else ctx.drawImage(image, 0, 0, dest.width, dest.height);
-      dest.classList.add('has-person');
-    } catch (error) {
-      ctx.clearRect(0, 0, dest.width, dest.height);
-    }
   }
 
   function alignGhostLayer() {
@@ -232,7 +211,10 @@ const Game = (() => {
     const rangeValue = state().settings.range || '1-6';
     const max = Number(String(rangeValue).split('-').pop()) || 6;
     const choices = choicesFor(max);
-    const speechReady = state().settings.speechMode !== 'tap' && Speech.supported();
+    const tapOnly = state().settings.speechMode === 'tap';
+    const speechReady = !tapOnly && Speech.supported();
+    const initialLine = speechReady ? 'Say your guess!' : (tapOnly ? 'Tap your guess!' : 'Speech unavailable');
+    const initialStatus = speechReady ? 'Listening…' : (tapOnly ? 'Tap only mode' : 'Tap a number');
     round = { choices, guess: null, total: null, counted: 0, positions: [], surprise: null, correct: false, stage: state().progress.stage || 1 };
     app.innerHTML = `
       <section class="screen">
@@ -242,15 +224,14 @@ const Game = (() => {
           <div class="guess-panel">
             <div class="say-prompt ${speechReady ? 'is-listening' : ''}" id="speech-prompt">
               <span class="mic-orb" aria-hidden="true"><span class="mic-icon">🎤</span><span class="mic-live" id="mic-dot"></span></span>
-              <span class="say-copy"><b id="say-line">Say your guess!</b><small id="listening-state">${speechReady ? 'Listening…' : 'Tap is ready too'}</small></span>
+              <span class="say-copy"><b id="say-line">${initialLine}</b><small id="listening-state">${initialStatus}</small></span>
             </div>
-            <div class="choice-label">or tap a number</div>
-            <div class="choices">${choices.map(n => `<button class="btn number-btn" data-choice="${n}" aria-label="${word(n)}">${n}</button>`).join('')}</div>
+            <div id="choice-rescue">${speechReady ? '' : choiceMarkup(choices)}</div>
           </div>
         </div>
       </section>`;
     paintFrozen();
-    document.querySelectorAll('[data-choice]').forEach(btn => btn.onclick = () => chooseGuess(Number(btn.dataset.choice), btn, 'tap'));
+    bindChoiceButtons();
     announce('How many ghosts?');
     if (speechReady) {
       Speech.startListening({
@@ -259,12 +240,34 @@ const Game = (() => {
           if (screen === 'guess' && round.guess === null && round.choices.includes(n)) chooseGuess(n, document.querySelector(`[data-choice="${n}"]`), 'speech');
         },
         onUnavailable() {
-          const prompt = document.getElementById('speech-prompt');
-          const status = document.getElementById('listening-state');
-          if (prompt) prompt.classList.remove('is-listening');
-          if (status) status.textContent = 'Tap a number anytime';
+          showChoiceRescue();
         }
       });
+    }
+  }
+
+  function choiceMarkup(choices) {
+    return `<div class="choice-label">Tap a number</div><div class="choices">${choices.map(n => `<button class="btn number-btn" data-choice="${n}" aria-label="${word(n)}">${n}</button>`).join('')}</div>`;
+  }
+
+  function bindChoiceButtons() {
+    document.querySelectorAll('[data-choice]').forEach(btn => {
+      btn.onclick = () => chooseGuess(Number(btn.dataset.choice), btn, 'tap');
+    });
+  }
+
+  function showChoiceRescue() {
+    if (screen !== 'guess' || !round || round.guess !== null) return;
+    const rescue = document.getElementById('choice-rescue');
+    const prompt = document.getElementById('speech-prompt');
+    const line = document.getElementById('say-line');
+    const status = document.getElementById('listening-state');
+    if (prompt) prompt.classList.remove('is-listening');
+    if (line) line.textContent = 'Speech unavailable';
+    if (status) status.textContent = 'Tap a number';
+    if (rescue && !rescue.querySelector('[data-choice]')) {
+      rescue.innerHTML = choiceMarkup(round.choices);
+      bindChoiceButtons();
     }
   }
 
@@ -314,15 +317,9 @@ const Game = (() => {
       round.personDetected = !Array.isArray(analysis) && analysis.personDetected === true;
       round.personBounds = !Array.isArray(analysis) ? analysis.personBounds : null;
       round.proximityBand = !Array.isArray(analysis) ? analysis.proximityBand : 0;
-      round.personCutout = Array.isArray(analysis) ? null : (analysis.personCutout || analysis.cutoutCanvas || null);
-      if (!round.personCutout && typeof Scene.createPersonCutout === 'function') {
-        try { round.personCutout = await Scene.createPersonCutout(photoCanvas, Array.isArray(analysis) ? null : analysis); }
-        catch (cutoutError) { round.personCutout = null; }
-      }
     }
     catch (err) { round.positions = Scene.fallbackPositions(count, Date.now() % 100000); round.personDetected = false; round.personBounds = null; round.proximityBand = 0; }
     if (screen !== 'reveal') return;
-    paintPersonCutout();
     if (round.surprise === 'tiny' && round.positions[0]) round.positions[0].scale = .35;
     if (round.surprise === 'large' && round.positions[0]) round.positions[0].scale = 1.7;
     renderGhosts(round.positions, round.surprise === 'vanish');
@@ -338,7 +335,7 @@ const Game = (() => {
   function ghostButton(pos, index, fake) {
     const scale = Math.max(.3, Math.min(1.75, Number(pos.scale) || 1));
     const rot = `${Number(pos.rotation || 0).toFixed(1)}deg`;
-    const classes = `ghost-target${fake ? ' fake' : ''}${pos.x > .55 ? ' badge-left' : ''}${pos.behind || pos.behindPerson ? ' behind-person' : ''}${round.surprise === 'peek' && index === 0 ? ' peeker' : ''}`;
+    const classes = `ghost-target${fake ? ' fake' : ''}${pos.x > .55 ? ' badge-left' : ''}${round.surprise === 'peek' && index === 0 ? ' peeker' : ''}`;
     const badgeGap = scale < .5 ? 48 : 18;
     const badgeOut = (-28 - badgeGap / scale).toFixed(1);
     return `<button class="${classes}" data-ghost="${index}" ${fake ? 'data-fake="1"' : ''} aria-label="Hidden ghost" style="left:${(pos.x*100).toFixed(2)}%;top:${(pos.y*100).toFixed(2)}%;--scale:${scale};--badge-scale:${(1 / scale).toFixed(3)};--badge-out:${badgeOut}px;--rot:${rot};--float-y:${8 + index%3*3}px;--float-dur:${2.8 + index%4*.45}s;--delay:${-index*.27}s">${Ghosts.svg({ stage: round.stage, flip: !!pos.flip, expression: ['cheeky','bright','sleepy'][index%3], hueJitter: (index%5-2)*5 })}<span class="count-badge"></span></button>`;
@@ -484,7 +481,7 @@ const Game = (() => {
           personBounds: round.personBounds ? { x:round.personBounds.x, y:round.personBounds.y, width:round.personBounds.width, height:round.personBounds.height } : null,
           proximityBand: round.proximityBand || 0,
           positions: (round.positions || []).map(p => ({
-            x:p.x, y:p.y, scale:p.scale, nearPerson:!!p.nearPerson, behind:!!(p.behind || p.behindPerson),
+            x:p.x, y:p.y, scale:p.scale, nearPerson:!!p.nearPerson,
             personOverlap:Number(p.personOverlap || 0), faceOverlap:Number(p.faceOverlap || 0),
             personDistance:Number.isFinite(p.personDistance) ? p.personDistance : null,
           }))
@@ -492,7 +489,7 @@ const Game = (() => {
         forceLucky(count) { forceLuckyRounds = Math.max(0, Number(count) || 1); },
         forceSurprise(type) { forcedSurprise = type; },
         showCamera, showTitle,
-        choose(n) { const el = document.querySelector(`[data-choice="${n}"]`); if (el) el.click(); },
+        choose(n) { const el = document.querySelector(`[data-choice="${n}"]`); chooseGuess(Number(n), el, 'tap'); },
         tapAll() { document.querySelectorAll('.ghost-target.ready:not(.counted)').forEach(el => el.click()); },
         state() { return JSON.parse(JSON.stringify(state())); }
       };

@@ -27,6 +27,22 @@ function server() {
   }).listen(0, '127.0.0.1');
 }
 
+async function installSpeechRecognitionStub(context) {
+  await context.addInitScript(() => {
+    class TestSpeechRecognition {
+      constructor() {
+        window.__ghostCountRecognizers = window.__ghostCountRecognizers || [];
+        window.__ghostCountRecognizers.push(this);
+      }
+      start() { window.__ghostCountRecognition = this; }
+      stop() {}
+      abort() {}
+    }
+    window.SpeechRecognition = TestSpeechRecognition;
+    window.webkitSpeechRecognition = TestSpeechRecognition;
+  });
+}
+
 async function waitScreen(page, name) {
   await page.waitForFunction(expected => document.getElementById('app').dataset.screen === expected, name, { timeout: 15000 });
 }
@@ -67,19 +83,6 @@ function assertPlacementSpread(positions, label) {
   assert(scales.some(scale => scale >= 1.35), `${label}: includes a large/near ghost`);
 }
 
-async function personCloseupClip(page) {
-  return page.evaluate(() => {
-    const boundaryGhost = document.querySelector('.ghost-target.behind-person').getBoundingClientRect();
-    const x = Math.max(0, boundaryGhost.left - 72), y = Math.max(0, boundaryGhost.top - 88);
-    return {
-      x,
-      y,
-      width: Math.min(innerWidth - x, boundaryGhost.width + 144),
-      height: Math.min(innerHeight - y, boundaryGhost.height + 210),
-    };
-  });
-}
-
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const local = server();
@@ -87,6 +90,7 @@ async function personCloseupClip(page) {
   const port = local.address().port;
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 430, height: 860 }, deviceScaleFactor: 1 });
+  await installSpeechRecognitionStub(context);
   const page = await context.newPage();
   const consoleErrors = [];
   const externalRequests = [];
@@ -105,16 +109,17 @@ async function personCloseupClip(page) {
 
     await page.click('#play-btn');
     await startRound(page);
-    assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'three choices render');
+    assert.strictEqual(await page.evaluate(() => Speech.supported()), true, 'speech recognition is available in the primary-input run');
+    assert.strictEqual(await page.locator('[data-choice]').count(), 0, 'number buttons stay absent while speech is available');
+    assert.strictEqual(await page.locator('.choice-label').count(), 0, 'speech-only state has no tap-number label');
     const micHeight = await page.locator('.say-prompt').evaluate(element => element.getBoundingClientRect().height);
     assert(micHeight >= 80, 'speech prompt is a prominent primary affordance');
     await page.screenshot({ path: path.join(SHOTS, 'guess.png') });
     await page.evaluate(() => { GhostCountTest.forceLucky(1); GhostCountTest.forceSurprise('vanish'); });
-    const largestChoice = await page.locator('[data-choice]').evaluateAll(buttons => Math.max(...buttons.map(button => Number(button.dataset.choice))));
-    await page.locator(`[data-choice="${largestChoice}"]`).click();
+    const largestChoice = await page.evaluate(() => Math.max(...GhostCountTest.round.choices));
+    await page.evaluate(choice => GhostCountTest.choose(choice), largestChoice);
     await waitScreen(page, 'reveal');
     await page.waitForFunction(() => document.querySelectorAll('.ghost-target.materialize').length >= 2);
-    await page.waitForSelector('.person-cutout.has-person');
     await page.screenshot({ path: path.join(SHOTS, 'person-reveal.png') });
     await waitScreen(page, 'count');
     assert.strictEqual(await page.locator('.ghost-target.fake').count(), 0, 'vanished ghost is removed before counting');
@@ -124,22 +129,24 @@ async function personCloseupClip(page) {
     const personRound = await page.evaluate(() => GhostCountTest.round);
     assert(personRound.personDetected, 'classroom demo detects its person');
     assert(personRound.positions.filter(position => position.nearPerson).length >= Math.ceil(announced * 0.6), 'most ghosts occupy the person proximity band');
-    const behind = personRound.positions.filter(position => position.behind);
-    assert(behind.length >= 1, 'at least one ghost is deliberately behind the person');
-    assert(behind.every(position => position.personOverlap >= 0.25 && position.personOverlap <= 0.45), 'behind overlap stays within 25–45%');
-    assert(personRound.positions.every(position => position.personOverlap <= 0.45), 'no ghost is hidden beyond the overlap cap');
-    assert(personRound.positions.every(position => position.faceOverlap === 0), 'ghost face regions remain completely visible');
-    assert.strictEqual(await page.locator('.ghost-target.behind-person').count(), behind.length, 'behind metadata reaches the rendered ghosts');
-    assert.strictEqual(await page.locator('.person-cutout').evaluate(element => getComputedStyle(element).pointerEvents), 'none', 'person cutout cannot block taps');
+    assert(personRound.positions.every(position => position.personOverlap <= 0.02), 'ghost footprints do not meaningfully overlap the person silhouette');
+    assert(personRound.positions.every(position => position.faceOverlap === 0), 'faces and heads remain hard-excluded placement targets');
+    assert.strictEqual(await page.locator('.person-cutout').count(), 0, 'the person occlusion layer is absent');
     assertPlacementSpread(personRound.positions, 'main counting round');
     await page.screenshot({ path: path.join(SHOTS, 'person-counting.png') });
-    await page.screenshot({ path: path.join(SHOTS, 'person-closeup.png'), clip: await personCloseupClip(page) });
-    await clickGhostByIndex(page, 0);
-    await page.waitForTimeout(350);
-    const badgeSize = await page.locator('.ghost-target.counted .count-badge').evaluate(element => element.getBoundingClientRect().width);
-    assert(badgeSize >= 54, 'count badge is projector-legible');
-    await page.screenshot({ path: path.join(SHOTS, 'counting.png') });
-    for (let index = 1; index < visibleCount; index += 1) await clickGhostByIndex(page, index);
+    for (let index = 0; index < visibleCount; index += 1) {
+      const before = await page.evaluate(() => GhostCountTest.round.counted);
+      await clickGhostByIndex(page, index);
+      await clickGhostByIndex(page, index);
+      const after = await page.evaluate(() => GhostCountTest.round.counted);
+      assert.strictEqual(after, before + 1, `person-scene ghost ${index + 1} counts exactly once`);
+      if (index === 0) {
+        await page.waitForTimeout(350);
+        const badgeSize = await page.locator('.ghost-target.counted .count-badge').evaluate(element => element.getBoundingClientRect().width);
+        assert(badgeSize >= 54, 'count badge is projector-legible');
+        await page.screenshot({ path: path.join(SHOTS, 'counting.png') });
+      }
+    }
     assert.strictEqual(await page.evaluate(() => GhostCountTest.round.counted), announced, 'every person-scene ghost remains reachable by a real pointer click');
     await waitScreen(page, 'result');
     assert((await page.locator('.result-total').innerText()).startsWith(String(announced)), 'result announces actual total');
@@ -150,7 +157,40 @@ async function personCloseupClip(page) {
     for (let round = 0; round < 2; round += 1) {
       await startRound(page);
       await page.evaluate(() => GhostCountTest.forceLucky(1));
-      await page.locator('[data-choice]').nth(round % 3).click();
+      assert.strictEqual(await page.locator('[data-choice]').count(), 0, 'each speech-ready guess starts without number buttons');
+      if (round === 0) {
+        /* A thinking child produces silence, and recognition ends itself on silence.
+           Neither a transient error nor one quiet restart may demote speech. */
+        await page.evaluate(() => {
+          const recognizer = window.__ghostCountRecognition;
+          recognizer.onerror({ error: 'no-speech' });
+          recognizer.onend();
+        });
+        await page.waitForTimeout(400);
+        assert.strictEqual(await page.locator('[data-choice]').count(), 0, 'a transient no-speech error does not demote speech to buttons');
+        assert(/say your guess/i.test(await page.locator('#say-line').innerText()), 'the microphone prompt survives a silent restart');
+        assert.strictEqual(await page.locator('.say-prompt.is-listening').count(), 1, 'the prompt still reads as listening after a restart');
+
+        await page.evaluate(() => {
+          const canvas = document.getElementById('frozen-photo');
+          window.__guessSnapshot = { canvas, width: canvas.width, height: canvas.height, choices: GhostCountTest.round.choices.slice() };
+          window.__ghostCountRecognition.onerror({ error: 'not-allowed' });
+        });
+        await page.waitForSelector('[data-choice]');
+        assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'recognition failure injects three rescue buttons');
+        assert(/speech unavailable/i.test(await page.locator('#say-line').innerText()), 'rescue explains that speech is unavailable');
+        assert(/tap a number/i.test(await page.locator('#listening-state').innerText()), 'rescue prompts the learner to tap a number');
+        const preserved = await page.evaluate(() => {
+          const snapshot = window.__guessSnapshot;
+          const canvas = document.getElementById('frozen-photo');
+          return snapshot.canvas === canvas && canvas.isConnected && snapshot.width === canvas.width && snapshot.height === canvas.height &&
+            GhostCountTest.round.guess === null && JSON.stringify(snapshot.choices) === JSON.stringify(GhostCountTest.round.choices);
+        });
+        assert(preserved, 'live rescue keeps the same guess screen, frozen photo, and round choices');
+        await page.locator('[data-choice]').nth(round % 3).click();
+      } else {
+        await page.evaluate(index => GhostCountTest.choose(GhostCountTest.round.choices[index]), round % 3);
+      }
       await finishCount(page);
     }
     await waitScreen(page, 'evolution');
@@ -167,6 +207,9 @@ async function personCloseupClip(page) {
         data[i] = skin ? 205 : 62; data[i+1] = skin ? 154 : 118; data[i+2] = skin ? 118 : 170; data[i+3] = 255;
       }
       const analysis = Scene.__test.analyze({ data, width, height }, { count: 6, seed: 44 });
+      /* A bare skin rectangle is not a person to the detector - this fixture covers
+         generic skin-blob avoidance. Person proximity and overlap are asserted
+         against the classroom demo scene above. */
       return analysis.positions.every(p => !Scene.__test.isExcluded(analysis, p.x, p.y) && !Scene.__test.footprintOverlaps(analysis, p));
     });
     assert(maskCheck, 'placement footprints avoid the synthetic skin/body mask');
@@ -186,20 +229,26 @@ async function personCloseupClip(page) {
     await page.click('#play-btn');
     await startRound(page);
     await page.evaluate(() => { Math.random = () => 0.99; });
-    await page.locator('[data-choice]').first().click();
+    await page.evaluate(() => GhostCountTest.choose(GhostCountTest.round.choices[0]));
     await finishCount(page);
     assert((await page.locator('.result-note').innerText()).startsWith('Ooh!'), 'a mismatch is framed as a cheerful surprise');
     assert(!/wrong|try again|mistake/i.test(await page.locator('body').innerText()), 'mismatch UI contains no failure language');
 
     const placementContext = await browser.newContext({ viewport: { width: 430, height: 860 }, deviceScaleFactor: 1 });
+    await installSpeechRecognitionStub(placementContext);
     const placementPage = await placementContext.newPage();
     placementPage.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
     placementPage.on('pageerror', err => consoleErrors.push(err.stack || err.message));
     placementPage.on('request', request => { if (!request.url().startsWith(`http://127.0.0.1:${port}/`)) externalRequests.push(request.url()); });
     await placementPage.goto(`http://127.0.0.1:${port}/?demo=1&test=1`, { waitUntil: 'networkidle' });
+    await placementPage.click('#settings-btn');
+    await placementPage.click('[data-setting="speechMode"][data-value="tap"]');
+    assert.strictEqual(await placementPage.evaluate(() => GhostCountTest.state().settings.speechMode), 'tap', 'Tap only remains a deliberate teacher setting');
+    await placementPage.click('#back-btn');
     await placementPage.click('#play-btn');
     for (const [index, filename] of ['placement-a.png', 'placement-b.png'].entries()) {
       await startRound(placementPage);
+      assert.strictEqual(await placementPage.locator('[data-choice]').count(), 3, 'Tap only renders three clickable number buttons');
       const maxChoice = await placementPage.locator('[data-choice]').evaluateAll(buttons => Math.max(...buttons.map(button => Number(button.dataset.choice))));
       await placementPage.evaluate(() => GhostCountTest.forceLucky(1));
       await placementPage.locator(`[data-choice="${maxChoice}"]`).click();
@@ -209,7 +258,6 @@ async function personCloseupClip(page) {
       if (index === 0) assert(sampleRound.personDetected, 'classroom placement sample exercises person behavior');
       else {
         assert(!sampleRound.personDetected, 'playground remains on the person-free placement path');
-        assert.strictEqual(await placementPage.locator('.person-cutout.has-person').count(), 0, 'person-free scene has no cutout layer content');
       }
       await placementPage.screenshot({ path: path.join(SHOTS, filename) });
       if (index === 0) { await placementPage.evaluate(() => GhostCountTest.tapAll()); await waitScreen(placementPage, 'result'); }
@@ -229,7 +277,7 @@ async function personCloseupClip(page) {
     assert.deepStrictEqual(externalRequests, [], `external requests: ${externalRequests.join('\n')}`);
     assert.deepStrictEqual(consoleErrors, [], `console errors: ${consoleErrors.join('\n')}`);
     console.log('PASS full loop, counting idempotence, vanish, evolution, persistence, placement, console');
-    console.log('SHOTS person-counting.png person-reveal.png person-closeup.png placement-b.png');
+    console.log('SHOTS person-counting.png placement-a.png placement-b.png');
   } finally {
     await browser.close();
     await new Promise(resolve => local.close(resolve));

@@ -6,7 +6,6 @@
 
 const Scene = (() => {
   const WORK_LONG_EDGE = 96;
-  const COMPOSITE_LONG_EDGE = 256;
   const DEMO_NAMES = ['classroom', 'playground', 'desktop'];
   const demoSources = typeof WeakMap === 'function' ? new WeakMap() : null;
   let demoIndex = 0;
@@ -377,40 +376,6 @@ const Scene = (() => {
       }
     }
     return { data: output, width, height };
-  }
-
-  function pixelsAtLongEdge(source, longEdge) {
-    if (!source) throw new TypeError('Scene analyzer needs a source frame.');
-    if (source.data && source.width && source.height) {
-      const input = { data: source.data, width: source.width, height: source.height };
-      if (Math.max(input.width, input.height) <= longEdge) return input;
-      const scale = longEdge / Math.max(input.width, input.height);
-      const width = Math.max(24, Math.round(input.width * scale));
-      const height = Math.max(24, Math.round(input.height * scale));
-      const output = new Uint8ClampedArray(width * height * 4);
-      for (let y = 0; y < height; y++) {
-        const sy = Math.min(input.height - 1, Math.floor(y / scale));
-        for (let x = 0; x < width; x++) {
-          const sx = Math.min(input.width - 1, Math.floor(x / scale));
-          const si = (sy * input.width + sx) * 4, di = (y * width + x) * 4;
-          output[di] = input.data[si]; output[di + 1] = input.data[si + 1];
-          output[di + 2] = input.data[si + 2]; output[di + 3] = input.data[si + 3] == null ? 255 : input.data[si + 3];
-        }
-      }
-      return { data: output, width, height };
-    }
-    if (typeof document === 'undefined') throw new TypeError('Canvas pixel extraction needs a browser document.');
-    const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
-    const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
-    if (!sourceWidth || !sourceHeight) throw new Error('The source frame has no pixels yet.');
-    const scale = Math.min(1, longEdge / Math.max(sourceWidth, sourceHeight));
-    const width = Math.max(24, Math.round(sourceWidth * scale));
-    const height = Math.max(24, Math.round(sourceHeight * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = width; canvas.height = height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(source, 0, 0, sourceWidth, sourceHeight, 0, 0, width, height);
-    return { data: ctx.getImageData(0, 0, width, height).data, width, height };
   }
 
   function dilate(mask, width, height, radius) {
@@ -833,6 +798,8 @@ const Scene = (() => {
     return Math.max(0.86, Math.min(1.28, 0.73 + (model.bounds ? model.bounds.height : 0.32) * 0.92));
   }
 
+  const MAX_PERSON_OVERLAP = 0.02;
+
   function placeAroundPerson(count, seed, pixels, channels, variance, model, depthPlan, surprise, visibleRect) {
     const { width, height } = pixels;
     const random = randomFrom(`${seed}-person`);
@@ -848,9 +815,7 @@ const Scene = (() => {
     if (awayCount > awayIndices.length && largeIndex >= 0 && largeIndex !== tinyIndex) awayIndices.push(largeIndex);
     for (let i = 0; awayIndices.length < awayCount && i < count; i++) if (!awayIndices.includes(i)) awayIndices.push(i);
     const nearIndices = Array.from({ length: count }, (_, index) => index).filter(index => !awayIndices.includes(index));
-    const behindIndex = nearIndices.find(index => depthPlan.roles[index] === 'normal') == null ? nearIndices[0] : nearIndices.find(index => depthPlan.roles[index] === 'normal');
-    const order = [behindIndex, ...nearIndices.filter(index => index !== behindIndex), ...awayIndices].filter(index => index != null);
-    const placedByIndex = Array(count);
+    const order = [...nearIndices, ...awayIndices];
     const positions = [];
 
     function scaleAt(index, ny, near) {
@@ -867,14 +832,12 @@ const Scene = (() => {
           const nx = x / (width - 1), ny = y / (height - 1);
           const near = kind !== 'away';
           const scale = scaleAt(index, ny, near);
-          if (model.headMask[i] || !insideVisibleRegion(nx, ny, scale, visibleRect)) continue;
+          if (model.headMask[i] || !footprintSafe(model.headMask, width, height, x, y, scale) || !insideVisibleRegion(nx, ny, scale, visibleRect)) continue;
           const proximity = distance[i];
           if (near && (proximity < 0.5 || proximity > bandMax * (relax ? 1.45 : 1))) continue;
           if (!near && proximity < bandMax * (relax ? 1.15 : 1.65)) continue;
           const stats = footprintStats(model.personMask, model.headMask, width, height, x, y, scale);
-          if (stats.overlap > 0.45 || stats.faceOverlap > 0) continue;
-          if (kind === 'behind' && (stats.overlap < 0.25 || stats.overlap > 0.45)) continue;
-          if (kind === 'near' && stats.overlap > 0.24) continue;
+          if (stats.overlap > MAX_PERSON_OVERLAP || stats.faceOverlap > 0) continue;
           const minSeparation = Math.max(0.115, 0.19 - count * 0.008);
           if (positions.some(item => Math.hypot(nx - item.x, (ny - item.y) * 0.82) < minSeparation)) continue;
           if (!relax && sameHorizontalBand(positions, ny)) continue;
@@ -888,54 +851,60 @@ const Scene = (() => {
             const idealDistance = Math.max(1.5, bandMax * 0.46);
             score *= 2.2 + 4.2 * Math.max(0, 1 - Math.abs(proximity - idealDistance) / bandMax);
           }
-          if (kind === 'behind') score *= 2 + 5 * Math.max(0, 1 - Math.abs(stats.overlap - 0.34) / 0.12);
           list.push({ x, y, nx, ny, scale, score, proximity, stats });
         }
       }
       return list;
     }
 
+    function rescueCandidate(index, preferNear) {
+      let best = null;
+      for (let y = 3; y < height - 3; y++) {
+        for (let x = 3; x < width - 3; x++) {
+          const i = y * width + x;
+          const nx = x / (width - 1), ny = y / (height - 1);
+          const scale = scaleAt(index, ny, preferNear);
+          if (model.headMask[i] || !footprintSafe(model.headMask, width, height, x, y, scale) || !insideVisibleRegion(nx, ny, scale, visibleRect)) continue;
+          const stats = footprintStats(model.personMask, model.headMask, width, height, x, y, scale);
+          if (stats.overlap > MAX_PERSON_OVERLAP || stats.faceOverlap > 0) continue;
+          const proximity = distance[i];
+          const inProximityBand = proximity >= 0.5 && proximity <= bandMax * 1.45;
+          const spacing = positions.length ? Math.min(...positions.map(item => Math.hypot(nx - item.x, (ny - item.y) * 0.82))) : 1;
+          const preference = preferNear === inProximityBand ? 1 : 0;
+          const verticalVariety = sameHorizontalBand(positions, ny) ? 0 : 0.2;
+          const score = preference * 2 + spacing * 3 + verticalVariety;
+          if (!best || score > best.score) best = { x, y, nx, ny, scale, score, proximity, stats };
+        }
+      }
+      return best;
+    }
+
     order.forEach(index => {
-      const kind = index === behindIndex ? 'behind' : (awayIndices.includes(index) ? 'away' : 'near');
+      const kind = awayIndices.includes(index) ? 'away' : 'near';
       let pool = candidateList(index, kind, false);
       if (!pool.length) pool = candidateList(index, kind, true);
-      if (!pool.length && kind === 'behind') pool = candidateList(index, 'near', true);
-      if (!pool.length) return;
-      let total = 0;
-      pool.forEach(candidate => { total += candidate.score; });
-      let needle = random() * total, chosen = pool[pool.length - 1];
-      for (const candidate of pool) {
-        needle -= candidate.score;
-        if (needle <= 0) { chosen = candidate; break; }
+      let chosen;
+      if (pool.length) {
+        let total = 0;
+        pool.forEach(candidate => { total += candidate.score; });
+        let needle = random() * total;
+        chosen = pool[pool.length - 1];
+        for (const candidate of pool) {
+          needle -= candidate.score;
+          if (needle <= 0) { chosen = candidate; break; }
+        }
+      } else {
+        chosen = rescueCandidate(index, kind === 'near');
       }
+      if (!chosen) return;
       const position = decoratePosition(chosen.nx, chosen.ny, chosen.scale, random, chosen.score);
-      position.nearPerson = kind !== 'away';
-      position.behind = kind === 'behind' && chosen.stats.overlap >= 0.25;
-      position.behindPerson = position.behind;
+      position.nearPerson = chosen.proximity >= 0.5 && chosen.proximity <= bandMax * 1.45;
       position.personOverlap = chosen.stats.overlap;
       position.faceOverlap = chosen.stats.faceOverlap;
       position.personDistance = chosen.proximity;
       position.proximityBand = bandMax;
-      position.depthCue = position.behind ? { brightness: 0.89, saturation: 0.82, contrast: 0.93, hueRotate: 7 } : null;
       positions.push(position);
-      placedByIndex[index] = position;
     });
-
-    /* Retain the ordinary safe fallback if an exceptionally crowded person
-       frame cannot satisfy the bounded-overlap composition. */
-    if (positions.length < count) {
-      const missing = count - positions.length;
-      fallbackPositions(missing, `${seed}-person-fallback`, model.headMask, width, height).forEach(position => {
-        position.nearPerson = false;
-        position.behind = false;
-        position.behindPerson = false;
-        position.personOverlap = 0;
-        position.faceOverlap = 0;
-        position.personDistance = distance[Math.round(position.y * (height - 1)) * width + Math.round(position.x * (width - 1))];
-        position.proximityBand = bandMax;
-        positions.push(position);
-      });
-    }
     return { positions: positions.slice(0, count), proximityMap: distance, proximityBand: bandMax };
   }
 
@@ -1115,49 +1084,6 @@ const Scene = (() => {
     }
   }
 
-  function featherAlpha(mask, width, height, radius) {
-    const horizontal = new Float32Array(mask.length);
-    const output = new Uint8ClampedArray(mask.length);
-    for (let y = 0; y < height; y++) {
-      let sum = 0;
-      for (let x = -radius; x <= radius; x++) if (x >= 0 && x < width) sum += mask[y * width + x];
-      for (let x = 0; x < width; x++) {
-        horizontal[y * width + x] = sum / (radius * 2 + 1);
-        const remove = x - radius;
-        const add = x + radius + 1;
-        if (remove >= 0) sum -= mask[y * width + remove];
-        if (add < width) sum += mask[y * width + add];
-      }
-    }
-    for (let x = 0; x < width; x++) {
-      let sum = 0;
-      for (let y = -radius; y <= radius; y++) if (y >= 0 && y < height) sum += horizontal[y * width + x];
-      for (let y = 0; y < height; y++) {
-        const blurred = sum / (radius * 2 + 1);
-        /* Slight erosion before the soft ramp avoids a bright fringe sampled
-           from just outside the silhouette. */
-        output[y * width + x] = Math.round(255 * Math.max(0, Math.min(1, (blurred - 0.16) / 0.7)));
-        const remove = y - radius;
-        const add = y + radius + 1;
-        if (remove >= 0) sum -= horizontal[remove * width + x];
-        if (add < height) sum += horizontal[add * width + x];
-      }
-    }
-    return output;
-  }
-
-  function scaledMask(mask, fromWidth, fromHeight, toWidth, toHeight) {
-    const output = new Uint8Array(toWidth * toHeight);
-    for (let y = 0; y < toHeight; y++) {
-      const sy = Math.min(fromHeight - 1, Math.floor(y * fromHeight / toHeight));
-      for (let x = 0; x < toWidth; x++) {
-        const sx = Math.min(fromWidth - 1, Math.floor(x * fromWidth / toWidth));
-        output[y * toWidth + x] = mask[sy * fromWidth + sx];
-      }
-    }
-    return output;
-  }
-
   function compositePersonSilhouette(channels, model, width, height) {
     const silhouette = new Uint8Array(width * height);
     let skinReach = 2;
@@ -1221,28 +1147,6 @@ const Scene = (() => {
     return silhouette;
   }
 
-  function buildPersonCutout(source, analysis, options) {
-    if (!analysis || !analysis.personDetected || typeof document === 'undefined') return null;
-    const opts = options || {};
-    const pixels = pixelsAtLongEdge(source, COMPOSITE_LONG_EDGE);
-    const channels = skinAndLuma(pixels);
-    const sourceWidth = source.videoWidth || source.naturalWidth || source.width;
-    const sourceHeight = source.videoHeight || source.naturalHeight || source.height;
-    const highModel = makePersonModel(channels.skin, pixels.width, pixels.height, opts.faceBoxes, sourceWidth, sourceHeight);
-    const mask = highModel.detected ?
-      compositePersonSilhouette(channels, highModel, pixels.width, pixels.height) :
-      scaledMask(analysis.personMask, analysis.width, analysis.height, pixels.width, pixels.height);
-    const alpha = featherAlpha(mask, pixels.width, pixels.height, Math.max(2, Math.round(COMPOSITE_LONG_EDGE / 110)));
-    const rgba = new Uint8ClampedArray(pixels.data);
-    for (let i = 0; i < alpha.length; i++) rgba[i * 4 + 3] = alpha[i];
-    const canvas = document.createElement('canvas');
-    canvas.width = pixels.width; canvas.height = pixels.height;
-    canvas.className = 'person-cutout';
-    canvas.setAttribute('aria-hidden', 'true');
-    canvas.getContext('2d').putImageData(new ImageData(rgba, pixels.width, pixels.height), 0, 0);
-    return { canvas, mask, alpha, width: pixels.width, height: pixels.height, bounds: maskBounds(mask, pixels.width, pixels.height) };
-  }
-
   async function analyze(source, countOrOptions, options) {
     const opts = normalizedOptions(countOrOptions, options);
     if (!opts.faceBoxes && typeof window !== 'undefined' && window.FaceDetector) {
@@ -1260,21 +1164,7 @@ const Scene = (() => {
       opts.sourceWidth = source.videoWidth || source.naturalWidth || source.width;
       opts.sourceHeight = source.videoHeight || source.naturalHeight || source.height;
     }
-    const analysis = computeAnalysis(source, opts);
-    const composite = buildPersonCutout(source, analysis, opts);
-    analysis.personCutout = composite ? composite.canvas : null;
-    analysis.cutoutCanvas = analysis.personCutout;
-    analysis.compositeMask = composite ? composite.mask : null;
-    analysis.compositeAlpha = composite ? composite.alpha : null;
-    analysis.compositeWidth = composite ? composite.width : 0;
-    analysis.compositeHeight = composite ? composite.height : 0;
-    analysis.compositeBounds = composite ? composite.bounds : null;
-    return analysis;
-  }
-
-  function createPersonCutout(source, analysis, options) {
-    const composite = buildPersonCutout(source, analysis, options);
-    return composite ? composite.canvas : null;
+    return computeAnalysis(source, opts);
   }
 
   function inspectFrame(source, countOrOptions, options) {
@@ -1288,7 +1178,6 @@ const Scene = (() => {
     copyFrame,
     analyze,
     analyzeDetailed,
-    createPersonCutout,
     analyzeSync,
     placeGhosts: analyze,
     placeGhostsSync: analyzeSync,
