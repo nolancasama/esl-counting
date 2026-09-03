@@ -43,6 +43,46 @@ async function installSpeechRecognitionStub(context) {
   });
 }
 
+/* The guess screen must read as one activity: question, then the possible answers,
+   then the way to say one - grouped low enough to leave the photograph visible. */
+async function assertAskCluster(page, label) {
+  const layout = await page.evaluate(() => {
+    const box = el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }; };
+    const panel = document.querySelector('.ask-panel');
+    const tiles = [...document.querySelectorAll('[data-choice]')].map(box);
+    return {
+      panel: box(panel),
+      question: box(document.querySelector('.question')),
+      choices: box(document.querySelector('.choices')),
+      say: box(document.querySelector('.say-prompt')),
+      tiles,
+      questionSize: parseFloat(getComputedStyle(document.querySelector('.question')).fontSize),
+      tileSize: parseFloat(getComputedStyle(document.querySelector('[data-choice]')).fontSize),
+      saySize: parseFloat(getComputedStyle(document.querySelector('#say-line')).fontSize),
+      statusSize: parseFloat(getComputedStyle(document.querySelector('#listening-state')).fontSize),
+      panels: document.querySelectorAll('.ask-panel').length,
+      viewport: { width: innerWidth, height: innerHeight },
+      contained: panel.contains(document.querySelector('.question')) && panel.contains(document.querySelector('.choices')) &&
+        panel.contains(document.querySelector('.say-prompt')),
+    };
+  });
+  const { panel, question, choices, say, tiles, viewport } = layout;
+  assert.strictEqual(layout.panels, 1, `${label}: the guess screen is one cluster, not two HUD regions`);
+  assert(layout.contained, `${label}: question, answers and microphone live in the same panel`);
+  assert(question.bottom <= choices.top, `${label}: the question sits above the answers`);
+  assert(choices.bottom <= say.top, `${label}: the microphone sits below the answers`);
+  assert(choices.top - question.bottom <= 20, `${label}: question and answers read as one unit`);
+  assert(layout.questionSize > layout.saySize, `${label}: the question outranks the speak prompt`);
+  assert(layout.tileSize > layout.saySize, `${label}: the numbers outrank the speak prompt`);
+  assert(layout.saySize > layout.statusSize, `${label}: the listening state is the quietest text`);
+  assert.strictEqual(tiles.length, 3, `${label}: three answers are offered`);
+  assert(tiles.every(tile => Math.abs(tile.top - tiles[0].top) < 2), `${label}: the answers stay on one row`);
+  assert(panel.top > viewport.height * 0.42, `${label}: the cluster stays out of the vertical centre`);
+  assert(panel.height <= viewport.height * 0.52, `${label}: the cluster leaves most of the photo visible`);
+  assert(panel.bottom <= viewport.height && panel.top >= 0, `${label}: the cluster fits on screen`);
+  assert(panel.left >= 0 && panel.right <= viewport.width, `${label}: the cluster fits horizontally`);
+}
+
 async function waitScreen(page, name) {
   await page.waitForFunction(expected => document.getElementById('app').dataset.screen === expected, name, { timeout: 15000 });
 }
@@ -112,8 +152,7 @@ function assertPlacementSpread(positions, label) {
     assert.strictEqual(await page.evaluate(() => Speech.supported()), true, 'speech recognition is available in the primary-input run');
     assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'the three number options are visible while speech is available');
     assert.strictEqual(await page.locator('[data-choice]:not(:disabled)').count(), 0, 'none of them is clickable while speech is available');
-    const micHeight = await page.locator('.say-prompt').evaluate(element => element.getBoundingClientRect().height);
-    assert(micHeight >= 80, 'speech prompt is a prominent primary affordance');
+    await assertAskCluster(page, 'portrait');
     await page.screenshot({ path: path.join(SHOTS, 'guess.png') });
     await page.evaluate(() => { GhostCountTest.forceLucky(1); GhostCountTest.forceSurprise('vanish'); });
     const largestChoice = await page.evaluate(() => Math.max(...GhostCountTest.round.choices));
@@ -159,7 +198,7 @@ function assertPlacementSpread(positions, label) {
       await page.evaluate(() => GhostCountTest.forceLucky(1));
       assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'a speech-ready guess still shows the three number options');
       assert.strictEqual(await page.locator('.choices.display-only [data-choice]:disabled').count(), 3, 'those options are inert while speech owns the round');
-      assert(/say one of these/i.test(await page.locator('.choice-label').innerText()), 'the options are labelled as words to say, not buttons to press');
+      assert(/say your guess/i.test(await page.locator('#say-line').innerText()), 'the microphone panel carries the speak instruction');
       if (round === 0) {
         /* A thinking child produces silence, and recognition ends itself on silence.
            Neither a transient error nor one quiet restart may demote speech. */
@@ -180,7 +219,6 @@ function assertPlacementSpread(positions, label) {
         });
         await page.waitForSelector('.choices:not(.display-only) [data-choice]');
         assert.strictEqual(await page.locator('[data-choice]:not(:disabled)').count(), 3, 'recognition failure makes the three number options clickable');
-        assert(/tap a number/i.test(await page.locator('.choice-label').innerText()), 'the rescue relabels the options as tappable');
         assert(/speech unavailable/i.test(await page.locator('#say-line').innerText()), 'rescue explains that speech is unavailable');
         assert(/tap a number/i.test(await page.locator('#listening-state').innerText()), 'rescue prompts the learner to tap a number');
         const preserved = await page.evaluate(() => {
@@ -228,8 +266,21 @@ function assertPlacementSpread(positions, label) {
       return button.top >= 0 && button.bottom <= innerHeight && button.left >= 0 && button.right <= innerWidth;
     });
     assert(titleFitsLandscape, 'primary title control fits a short landscape viewport');
+
+    /* Chromebook landscape is the classroom case: the cluster must compress rather
+       than eat the photograph, and the three answers must stay on one row. */
+    await page.setViewportSize({ width: 1366, height: 768 });
+    if ((await page.locator('#app').getAttribute('data-screen')) === 'title') await page.click('#play-btn');
+    await startRound(page);
+    await assertAskCluster(page, 'chromebook landscape');
+    await page.screenshot({ path: path.join(SHOTS, 'guess-landscape.png') });
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.waitForTimeout(120);
+    await assertAskCluster(page, 'short landscape');
+    await page.evaluate(() => GhostCountTest.choose(GhostCountTest.round.choices[0]));
+    await finishCount(page);
+
     await page.setViewportSize({ width: 430, height: 860 });
-    await page.click('#play-btn');
     await startRound(page);
     await page.evaluate(() => { Math.random = () => 0.99; });
     await page.evaluate(() => GhostCountTest.choose(GhostCountTest.round.choices[0]));

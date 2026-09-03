@@ -116,28 +116,37 @@ button { color: inherit; cursor: pointer; touch-action: manipulation; }
 @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
 
 /* Guess and reveal */
-.game-hud { padding: var(--safe-top) 14px calc(var(--safe-bottom) + 14px); display: flex; flex-direction: column; justify-content: space-between; align-items: center; }
-.question-box { width: min(92vw, 660px); text-align: center; padding: 13px 18px; border-radius: 19px; background: rgba(14,9,42,.7); border: 1px solid rgba(150,245,230,.32); backdrop-filter: blur(12px); box-shadow: 0 10px 35px rgba(0,0,0,.28); }
-.question { font-size: clamp(1.45rem, 6vw, 2.45rem); font-weight: 1000; letter-spacing: .045em; }
-.feedback-line { margin-top: 4px; min-height: 1.25em; color: var(--mint); font-weight: 900; }
-.guess-panel { width: min(94vw, 650px); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.game-hud { padding: var(--safe-top) 14px calc(var(--safe-bottom) + clamp(10px, 3vh, 26px)); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+/* Question, answers and microphone read as one activity, low enough to leave the photo visible. */
+.ask-panel {
+  width: min(94vw, 560px); display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: clamp(5px, 1.1vh, 11px); padding: clamp(11px, 1.9vh, 18px) clamp(13px, 3vw, 20px);
+  border-radius: 27px; background: rgba(14,9,42,.62); border: 1px solid rgba(150,245,230,.3);
+  backdrop-filter: blur(14px); box-shadow: 0 14px 44px rgba(0,0,0,.36);
+}
+.question { font-size: clamp(1.35rem, 5.6vw, 2.2rem); font-weight: 1000; letter-spacing: .045em; line-height: 1.08; }
+.feedback-line { color: var(--mint); font-weight: 900; font-size: clamp(.85rem, 3.4vw, 1.05rem); line-height: 1.15; }
+/* Reserving a blank line would wedge dead space between the question and the answers.
+   The panel is bottom-anchored, so growing it on a guess lifts the question and leaves
+   the numbers and microphone exactly where the child is already looking. */
+.feedback-line:empty { display: none; }
+.choice-slot { width: 100%; }
 .say-prompt {
-  width: min(88vw, 390px); min-height: 84px; display: flex; align-items: center; justify-content: center; gap: 15px;
-  padding: 10px 20px; border: 2px solid rgba(255,255,255,.82); border-radius: 25px;
+  width: 100%; min-height: clamp(52px, 8vh, 66px); display: flex; align-items: center; justify-content: center; gap: 12px;
+  padding: 8px 16px; border: 2px solid rgba(255,255,255,.82); border-radius: 21px;
   background: linear-gradient(135deg, rgba(255,96,147,.94), rgba(188,72,199,.94));
   box-shadow: 0 12px 34px rgba(17,5,42,.44), 0 0 0 5px rgba(255,255,255,.09);
-  font-size: clamp(1.15rem, 4.5vw, 1.42rem); font-weight: 900; text-shadow: 0 2px 8px rgba(45,9,52,.45);
+  font-size: clamp(.95rem, 3.6vw, 1.15rem); font-weight: 900; text-shadow: 0 2px 8px rgba(45,9,52,.45);
 }
-.mic-orb { position: relative; flex: 0 0 58px; width: 58px; height: 58px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: #5b235f; box-shadow: 0 5px 16px rgba(46,8,54,.32); }
-.mic-icon { font-size: 1.75rem; line-height: 1; }
-.mic-live { position: absolute; right: 1px; bottom: 2px; width: 15px; height: 15px; border: 3px solid #fff; border-radius: 50%; background: var(--mint-2); box-shadow: 0 0 0 0 rgba(131,243,223,.65); }
+.mic-orb { position: relative; flex: 0 0 44px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #fff; color: #5b235f; box-shadow: 0 5px 16px rgba(46,8,54,.32); }
+.mic-icon { font-size: 1.35rem; line-height: 1; }
+.mic-live { position: absolute; right: 0; bottom: 1px; width: 13px; height: 13px; border: 3px solid #fff; border-radius: 50%; background: var(--mint-2); box-shadow: 0 0 0 0 rgba(131,243,223,.65); }
 .say-prompt.is-listening .mic-live { animation: micLive 1.15s infinite; }
 .say-copy { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.12; }
-.say-copy small { margin-top: 5px; color: #ffeaf6; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; }
-.choice-label { color: rgba(255,255,255,.82); font-size: .72rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; text-shadow: 0 2px 8px #000; }
+.say-copy small { margin-top: 3px; color: #ffeaf6; font-size: .66rem; letter-spacing: .12em; text-transform: uppercase; }
 @keyframes micLive { 65% { box-shadow: 0 0 0 10px rgba(255,107,145,0); } }
 .choices { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(8px, 2vw, 16px); }
-.number-btn { min-height: clamp(68px, 10vh, 88px); border-radius: 21px; font-size: clamp(1.8rem, 7.5vw, 3.4rem); line-height: 1; opacity: .94; }
+.number-btn { min-height: clamp(54px, 8.6vh, 82px); border-radius: 19px; font-size: clamp(1.7rem, 7vw, 3rem); line-height: 1; opacity: .94; }
 .number-btn.chosen { animation: luckyGlow .65s ease both; }
 /* Shown as the available answers while speech owns the round, not as controls. */
 .choices.display-only .number-btn { pointer-events: none; opacity: .82; }
@@ -270,8 +279,14 @@ input[type="range"] { width: 100%; accent-color: var(--mint); }
   .title-card { gap: 8px; padding: 10px; }
   .title-ghost { width: 28vh; }
   .title-logo { font-size: 10vh; }
-  .number-btn { min-height: 70px; }
-  .game-hud { padding-top: 8px; padding-bottom: 8px; }
+  .number-btn { min-height: clamp(44px, 13vh, 58px); font-size: clamp(1.4rem, 5vh, 2rem); }
+  .game-hud { padding-top: 8px; padding-bottom: 14px; }
+  .ask-panel { width: min(72vw, 470px); gap: 4px; padding: 8px 14px; border-radius: 21px; }
+  .question { font-size: clamp(1.05rem, 4.6vh, 1.6rem); }
+  .feedback-line { font-size: clamp(.72rem, 2.6vh, .92rem); }
+  .say-prompt { min-height: clamp(40px, 11vh, 54px); border-radius: 17px; }
+  .mic-orb { flex: 0 0 36px; width: 36px; height: 36px; }
+  .mic-icon { font-size: 1.1rem; }
   .result-card { padding: 13px; }
   .result-total { font-size: 12vh; }
 }

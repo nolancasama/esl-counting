@@ -220,13 +220,14 @@ const Game = (() => {
       <section class="screen">
         ${photoStageMarkup('')}
         <div class="ui-layer game-hud">
-          <div class="question-box"><div class="question">HOW MANY GHOSTS?</div><div class="feedback-line" id="feedback"></div></div>
-          <div class="guess-panel">
+          <div class="ask-panel">
+            <div class="question">HOW MANY GHOSTS?</div>
+            <div class="feedback-line" id="feedback"></div>
+            <div class="choice-slot" id="choice-rescue">${choiceMarkup(choices, !speechReady)}</div>
             <div class="say-prompt ${speechReady ? 'is-listening' : ''}" id="speech-prompt">
               <span class="mic-orb" aria-hidden="true"><span class="mic-icon">🎤</span><span class="mic-live" id="mic-dot"></span></span>
               <span class="say-copy"><b id="say-line">${initialLine}</b><small id="listening-state">${initialStatus}</small></span>
             </div>
-            <div id="choice-rescue">${choiceMarkup(choices, !speechReady)}</div>
           </div>
         </div>
       </section>`;
@@ -249,9 +250,8 @@ const Game = (() => {
   /* The three numbers are always on screen so a learner can see which words are
      available to say. They are inert until speech cannot carry the round. */
   function choiceMarkup(choices, interactive) {
-    const label = interactive ? 'Tap a number' : 'Say one of these';
     const inert = interactive ? '' : ' disabled';
-    return `<div class="choice-label">${label}</div><div class="choices${interactive ? '' : ' display-only'}">${choices.map(n => `<button class="btn number-btn" data-choice="${n}" aria-label="${word(n)}"${inert}>${n}</button>`).join('')}</div>`;
+    return `<div class="choices${interactive ? '' : ' display-only'}" role="group" aria-label="Possible answers">${choices.map(n => `<button class="btn number-btn" data-choice="${n}" aria-label="${word(n)}"${inert}>${n}</button>`).join('')}</div>`;
   }
 
   function bindChoiceButtons() {
