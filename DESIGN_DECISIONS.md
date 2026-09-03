@@ -54,3 +54,11 @@ Two supporting choices fall out of this. The separate "Say one of these" / "Tap 
 The microphone panel's two lines are Japanese in every state — こたえをいってね！/ きいているよ…, the tap-only and speech-unavailable states, and the post-guess replies. The question "HOW MANY GHOSTS?", the three numerals and the "Three? Let's see!" feedback stay English: those are the vocabulary the game exists to teach, and translating them would remove the lesson. Speech recognition remains `en-US` — the child still answers in English.
 
 Hiragana-forward wording for elementary readers. The status line lost its uppercase transform and wide letter-spacing, which do nothing for kana and hurt legibility, and grew from .66rem to .78rem. Japanese renders through a system font stack (`--font-ja`, rounded gothic first); a webfont was rejected because it would mean a network request, which the game's privacy guarantee forbids.
+
+## 2026-09-03 — Three correct guesses in a row is the ceiling
+
+The guess result was never random: `decideTotal` returns the child's own guess with probability .5, .65 or .85 depending on their streak, so the game feels generous. Measured over 60 real rounds it dealt 68.3% correct against 33.3% for a fair three-way choice, matching the table.
+
+The ramp had no ceiling, and `evolve()` cleared `streak` only while `stage < 3`. At the final stage the streak stuck at 3, pinning the odds at .85 permanently — one measured run reached twenty consecutive correct guesses.
+
+A new `progress.correctRun` counter now caps consecutive correct guesses at three. It increments on a correct guess, resets on an incorrect one, and — unlike `streak` — is never cleared by evolution, so evolving cannot launder the cap. Three is the lowest workable ceiling because evolution requires three consecutive lucky guesses. Measured over 80 rounds afterwards: longest run three, no run of five or more, overall 55% correct.

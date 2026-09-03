@@ -243,6 +243,21 @@ function assertPlacementSpread(positions, label) {
     const evolved = await page.evaluate(() => GhostCountTest.state().progress.stage);
     assert.strictEqual(evolved, 2, 'three lucky guesses evolve stage 1 to 2');
 
+    /* Three correct in a row is the ceiling, and evolving must not reset it -
+       clearing the run on evolution is how a streak of three became a streak of
+       twenty once the final stage was reached. */
+    assert.strictEqual(await page.evaluate(() => GhostCountTest.state().progress.correctRun), 3,
+      'the correct-guess run survives an evolution');
+    await page.mouse.click(215, 430);
+    await page.waitForFunction(() => ['camera', 'result'].includes(document.getElementById('app').dataset.screen), null, { timeout: 20000 });
+    await startRound(page);
+    await page.evaluate(() => GhostCountTest.choose(GhostCountTest.round.choices[0]));
+    const capped = await page.evaluate(() => ({ guess: GhostCountTest.round.guess, total: GhostCountTest.round.total }));
+    assert.notStrictEqual(capped.total, capped.guess, 'a fourth consecutive correct guess is not dealt');
+    await finishCount(page);
+    assert.strictEqual(await page.evaluate(() => GhostCountTest.state().progress.correctRun), 0,
+      'the run resets once it is broken');
+
     const maskCheck = await page.evaluate(() => {
       const width = 96, height = 96, data = new Uint8ClampedArray(width * height * 4);
       for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {

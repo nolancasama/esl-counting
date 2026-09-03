@@ -18,6 +18,9 @@ const State = (() => {
       family: '01',
       stage: 1,
       streak: 0,
+      /* Consecutive correct guesses. Unlike streak this is never cleared by
+         evolution, so the run cap cannot be reset by evolving. */
+      correctRun: 0,
       unlockedFamilies: Object.freeze(['01']),
       discovered: Object.freeze({ '01': Object.freeze([true, false, false]) }),
     }),
@@ -74,6 +77,7 @@ const State = (() => {
       clean.progress.family = /^\d{2}$/.test(progress.family) ? progress.family : '01';
       clean.progress.stage = Math.round(finiteNumber(progress.stage, 1, 1, 3));
       clean.progress.streak = Math.round(finiteNumber(progress.streak, 0, 0, 3));
+      clean.progress.correctRun = Math.round(finiteNumber(progress.correctRun, 0, 0, 3));
 
       const unlocked = Array.isArray(progress.unlockedFamilies)
         ? progress.unlockedFamilies.filter(id => typeof id === 'string' && /^\d{2}$/.test(id))
@@ -155,6 +159,7 @@ const State = (() => {
     let shouldEvolve = false;
     update(draft => {
       draft.progress.streak = isLucky ? Math.min(3, draft.progress.streak + 1) : 0;
+      draft.progress.correctRun = isLucky ? Math.min(3, (draft.progress.correctRun || 0) + 1) : 0;
       shouldEvolve = isLucky && draft.progress.streak === 3 && draft.progress.stage < 3;
       return draft;
     });

@@ -15,7 +15,7 @@ Ghost Count is implemented as a dependency-free static web game and is ready for
 The person-occlusion removal and speech-first guessing changes are delivered for review.
 
 ## Known Issues
-None yet.
+None open. Fixed 2026-09-03: at the final evolution stage the lucky-guess streak never reset, pinning the odds at 85% and producing runs of twenty correct guesses; consecutive correct guesses are now capped at three.
 
 ## Next Steps
 Review the generated screenshots and deploy the static files from the repository root when approved.

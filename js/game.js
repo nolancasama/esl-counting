@@ -291,13 +291,20 @@ const Game = (() => {
     }
   }
 
+  /* Three in a row is the ceiling. The odds ramp is deliberately generous, and at
+     the top of the ramp it stays there - without a cap a run just keeps going.
+     Three still allows the evolution the streak indicator counts toward. */
+  const MAX_CORRECT_RUN = 3;
+
   function decideTotal(guess) {
     if (forceLuckyRounds > 0) { forceLuckyRounds--; return guess; }
-    const streak = Math.max(0, Math.min(2, state().progress.streak || 0));
-    const lucky = Math.random() < [.5, .65, .85][streak];
-    if (lucky) return guess;
     const others = round.choices.filter(n => n !== guess);
-    return others[Math.floor(Math.random() * others.length)];
+    const capped = (state().progress.correctRun || 0) >= MAX_CORRECT_RUN;
+    if (!capped) {
+      const streak = Math.max(0, Math.min(2, state().progress.streak || 0));
+      if (Math.random() < [.5, .65, .85][streak]) return guess;
+    }
+    return others.length ? others[Math.floor(Math.random() * others.length)] : guess;
   }
 
   function chooseGuess(n, btn, source) {
