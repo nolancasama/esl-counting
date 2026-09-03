@@ -36,3 +36,7 @@ Speech recognition is the sole guessing affordance when it is available and perm
 ## 2026-09-03 — Silence does not demote speech
 
 Only a permission or hardware failure (`not-allowed`, `service-not-allowed`, `audio-capture`) drops the learner to the number-button rescue. Transient recognition errors such as `no-speech` or `network` restart the recognizer instead, because browsers end a recognition session after a few seconds of quiet and a child thinking about the answer produces exactly that. As a safety net, three consecutive sessions that hear nothing at all are treated as speech not working and do surface the rescue. Rejected alternative: treating every error and every session end as unavailability, which demoted a hesitating child to buttons on their first pause.
+
+## 2026-09-03 — The number options stay on screen, inert
+
+All three number options are always visible on the guess screen, even while speech owns the round, labelled **Say one of these** and rendered non-interactive. A learner cannot say a number they have not been shown, so removing the options entirely took away the vocabulary prompt along with the buttons. They become tappable, and relabel to **Tap a number**, only on the rescue path. Rejected alternative: rendering nothing but the microphone while speech is available.

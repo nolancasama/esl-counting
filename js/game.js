@@ -226,7 +226,7 @@ const Game = (() => {
               <span class="mic-orb" aria-hidden="true"><span class="mic-icon">🎤</span><span class="mic-live" id="mic-dot"></span></span>
               <span class="say-copy"><b id="say-line">${initialLine}</b><small id="listening-state">${initialStatus}</small></span>
             </div>
-            <div id="choice-rescue">${speechReady ? '' : choiceMarkup(choices)}</div>
+            <div id="choice-rescue">${choiceMarkup(choices, !speechReady)}</div>
           </div>
         </div>
       </section>`;
@@ -246,8 +246,12 @@ const Game = (() => {
     }
   }
 
-  function choiceMarkup(choices) {
-    return `<div class="choice-label">Tap a number</div><div class="choices">${choices.map(n => `<button class="btn number-btn" data-choice="${n}" aria-label="${word(n)}">${n}</button>`).join('')}</div>`;
+  /* The three numbers are always on screen so a learner can see which words are
+     available to say. They are inert until speech cannot carry the round. */
+  function choiceMarkup(choices, interactive) {
+    const label = interactive ? 'Tap a number' : 'Say one of these';
+    const inert = interactive ? '' : ' disabled';
+    return `<div class="choice-label">${label}</div><div class="choices${interactive ? '' : ' display-only'}">${choices.map(n => `<button class="btn number-btn" data-choice="${n}" aria-label="${word(n)}"${inert}>${n}</button>`).join('')}</div>`;
   }
 
   function bindChoiceButtons() {
@@ -265,8 +269,8 @@ const Game = (() => {
     if (prompt) prompt.classList.remove('is-listening');
     if (line) line.textContent = 'Speech unavailable';
     if (status) status.textContent = 'Tap a number';
-    if (rescue && !rescue.querySelector('[data-choice]')) {
-      rescue.innerHTML = choiceMarkup(round.choices);
+    if (rescue && !rescue.querySelector('.choices:not(.display-only)')) {
+      rescue.innerHTML = choiceMarkup(round.choices, true);
       bindChoiceButtons();
     }
   }

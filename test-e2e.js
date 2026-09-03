@@ -110,8 +110,8 @@ function assertPlacementSpread(positions, label) {
     await page.click('#play-btn');
     await startRound(page);
     assert.strictEqual(await page.evaluate(() => Speech.supported()), true, 'speech recognition is available in the primary-input run');
-    assert.strictEqual(await page.locator('[data-choice]').count(), 0, 'number buttons stay absent while speech is available');
-    assert.strictEqual(await page.locator('.choice-label').count(), 0, 'speech-only state has no tap-number label');
+    assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'the three number options are visible while speech is available');
+    assert.strictEqual(await page.locator('[data-choice]:not(:disabled)').count(), 0, 'none of them is clickable while speech is available');
     const micHeight = await page.locator('.say-prompt').evaluate(element => element.getBoundingClientRect().height);
     assert(micHeight >= 80, 'speech prompt is a prominent primary affordance');
     await page.screenshot({ path: path.join(SHOTS, 'guess.png') });
@@ -157,7 +157,9 @@ function assertPlacementSpread(positions, label) {
     for (let round = 0; round < 2; round += 1) {
       await startRound(page);
       await page.evaluate(() => GhostCountTest.forceLucky(1));
-      assert.strictEqual(await page.locator('[data-choice]').count(), 0, 'each speech-ready guess starts without number buttons');
+      assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'a speech-ready guess still shows the three number options');
+      assert.strictEqual(await page.locator('.choices.display-only [data-choice]:disabled').count(), 3, 'those options are inert while speech owns the round');
+      assert(/say one of these/i.test(await page.locator('.choice-label').innerText()), 'the options are labelled as words to say, not buttons to press');
       if (round === 0) {
         /* A thinking child produces silence, and recognition ends itself on silence.
            Neither a transient error nor one quiet restart may demote speech. */
@@ -167,7 +169,7 @@ function assertPlacementSpread(positions, label) {
           recognizer.onend();
         });
         await page.waitForTimeout(400);
-        assert.strictEqual(await page.locator('[data-choice]').count(), 0, 'a transient no-speech error does not demote speech to buttons');
+        assert.strictEqual(await page.locator('.choices.display-only [data-choice]:disabled').count(), 3, 'a transient no-speech error leaves the number options inert');
         assert(/say your guess/i.test(await page.locator('#say-line').innerText()), 'the microphone prompt survives a silent restart');
         assert.strictEqual(await page.locator('.say-prompt.is-listening').count(), 1, 'the prompt still reads as listening after a restart');
 
@@ -176,8 +178,9 @@ function assertPlacementSpread(positions, label) {
           window.__guessSnapshot = { canvas, width: canvas.width, height: canvas.height, choices: GhostCountTest.round.choices.slice() };
           window.__ghostCountRecognition.onerror({ error: 'not-allowed' });
         });
-        await page.waitForSelector('[data-choice]');
-        assert.strictEqual(await page.locator('[data-choice]').count(), 3, 'recognition failure injects three rescue buttons');
+        await page.waitForSelector('.choices:not(.display-only) [data-choice]');
+        assert.strictEqual(await page.locator('[data-choice]:not(:disabled)').count(), 3, 'recognition failure makes the three number options clickable');
+        assert(/tap a number/i.test(await page.locator('.choice-label').innerText()), 'the rescue relabels the options as tappable');
         assert(/speech unavailable/i.test(await page.locator('#say-line').innerText()), 'rescue explains that speech is unavailable');
         assert(/tap a number/i.test(await page.locator('#listening-state').innerText()), 'rescue prompts the learner to tap a number');
         const preserved = await page.evaluate(() => {
@@ -248,7 +251,7 @@ function assertPlacementSpread(positions, label) {
     await placementPage.click('#play-btn');
     for (const [index, filename] of ['placement-a.png', 'placement-b.png'].entries()) {
       await startRound(placementPage);
-      assert.strictEqual(await placementPage.locator('[data-choice]').count(), 3, 'Tap only renders three clickable number buttons');
+      assert.strictEqual(await placementPage.locator('[data-choice]:not(:disabled)').count(), 3, 'Tap only renders three clickable number buttons');
       const maxChoice = await placementPage.locator('[data-choice]').evaluateAll(buttons => Math.max(...buttons.map(button => Number(button.dataset.choice))));
       await placementPage.evaluate(() => GhostCountTest.forceLucky(1));
       await placementPage.locator(`[data-choice="${maxChoice}"]`).click();

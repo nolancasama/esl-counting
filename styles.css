@@ -139,6 +139,9 @@ button { color: inherit; cursor: pointer; touch-action: manipulation; }
 .choices { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(8px, 2vw, 16px); }
 .number-btn { min-height: clamp(68px, 10vh, 88px); border-radius: 21px; font-size: clamp(1.8rem, 7.5vw, 3.4rem); line-height: 1; opacity: .94; }
 .number-btn.chosen { animation: luckyGlow .65s ease both; }
+/* Shown as the available answers while speech owns the round, not as controls. */
+.choices.display-only .number-btn { pointer-events: none; opacity: .82; }
+.choices.display-only .number-btn.chosen { opacity: 1; }
 @keyframes luckyGlow { 45% { transform: scale(1.12); filter: brightness(1.35); box-shadow: 0 0 0 8px rgba(131,243,223,.2), 0 0 48px var(--mint); } }
 .spark { position: absolute; z-index: 50; color: var(--gold); pointer-events: none; font-size: 1.4rem; animation: sparkle .75s ease-out forwards; }
 @keyframes sparkle { to { transform: translate(var(--sx), var(--sy)) scale(.2) rotate(130deg); opacity: 0; } }

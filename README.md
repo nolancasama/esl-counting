@@ -15,7 +15,7 @@ The game makes no network requests. Camera frames stay in memory only, are proce
 - **Gear:** Number range, speech input, spoken prompts, volume, and progress reset.
 - **Evolution:** Tap anywhere to skip the short sequence.
 
-Speech is the primary guessing input when recognition is available and enabled. Number buttons appear as a fallback when speech is unsupported or unavailable, or when a teacher selects **Tap only** in Settings.
+Speech is the primary guessing input when recognition is available and enabled. The three number options are always shown so learners can see what to say, but they are not tappable until speech cannot carry the round - when recognition is unsupported or unavailable, or when a teacher selects **Tap only** in Settings.
 
 ## Files
 

@@ -7,7 +7,7 @@ Ghost Count is implemented as a dependency-free static web game and is ready for
 - Camera and procedural demo-scene rounds with local-only image handling.
 - Person-aware ghost placement that clusters most ghosts just outside the detected silhouette while excluding bodies, faces, and heads.
 - Ghosts render fully above the frozen photo with no person occlusion layer.
-- Speech-first guessing with live number-button rescue for unsupported or unavailable recognition and a teacher-controlled **Tap only** mode.
+- Speech-first guessing. All three number options stay on screen as an inert vocabulary prompt and become clickable only as a rescue for unsupported or unavailable recognition, or in teacher-controlled **Tap only** mode.
 - Tappable, count-once ghosts, results, progression/evolution, Ghost Book, settings, sound, and persistence.
 - Playwright E2E coverage for the game loop, speech and rescue input states, placement safety, counting idempotence, offline behavior, and screenshots.
 
